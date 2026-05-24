@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "honcho-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1779388361,
+        "narHash": "sha256-g/uZgSqCOzNiGSAQugEkPwz2+Wt6DPBiMNCRjzmA8sc=",
+        "owner": "plastic-labs",
+        "repo": "honcho",
+        "rev": "7470866d12845ed4b56bf3449d058e65df96b1c1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "plastic-labs",
+        "ref": "v3.0.7",
+        "repo": "honcho",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1779508470,
+        "narHash": "sha256-Ap9KJX+5xHIn3bPIpfNgT6MEXdAECECwo4/rmlQD74M=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "29916453413845e54a65b8a1cf996842300cd299",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "honcho-src": "honcho-src",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
