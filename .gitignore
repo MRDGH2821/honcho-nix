@@ -1,5 +1,16 @@
+*.local
+.DS_Store
 .devenv
 .direnv
+.env
+.env.*
+!.env.sample
+.git
+.svn
 .venv/
+__MACOSX
+__pycache__
+dist/
 megalinter-reports/
 node_modules/
+target/

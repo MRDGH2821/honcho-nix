@@ -40,7 +40,23 @@ priority = 1
 [formatter.prettier]
 command = "bunx"
 # tombi: format.rules.array-values-order = "ascending"
-excludes = ["*.*ignore", "*.jinja", "*.lock", "*.nix", "*.py", "LICENSE.txt"]
+excludes = [
+  "*.*ignore",
+  "*.aac",
+  "*.docx",
+  "*.jinja",
+  "*.jpg",
+  "*.lock",
+  "*.mp4",
+  "*.nix",
+  "*.pdf",
+  "*.png",
+  "*.pptx",
+  "*.py",
+  "*.txt",
+  "*.typ",
+  "justfile"
+]
 includes = ["*"]
 options = ["prettier", "--log-level", "error", "--write"]
 priority = 100
