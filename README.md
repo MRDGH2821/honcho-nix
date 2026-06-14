@@ -1,29 +1,49 @@
 # honcho-nix
 
 A Nix flake packaging [Honcho](https://github.com/plastic-labs/honcho) as a
-NixOS service — memory infrastructure for stateful agents.
+reproducible Nix package and NixOS service — memory infrastructure for
+stateful agents.
 
 ## Overview
 
-| Output                        | Description                                                        |
-| ----------------------------- | ------------------------------------------------------------------ |
-| `nixosModules.default`        | NixOS module — PostgreSQL (pgvector), Redis, server, worker, nginx |
-| `packages.<system>.server`    | Honcho FastAPI server wrapper                                      |
-| `packages.<system>.cli`       | `honcho` CLI (typer terminal)                                      |
-| `packages.<system>.migrate`   | Alembic database migration runner                                  |
-| `packages.<system>.worker`    | Background queue deriver daemon                                    |
-| `packages.<system>.pythonEnv` | Python environment with all third-party deps                       |
+| Output                      | Description                                                  |
+| --------------------------- | ------------------------------------------------------------ |
+| `packages.<system>.default` | Honcho application (uv2nix + `mkApplication`)                |
+| `packages.<system>.server`  | FastAPI server wrapper                                       |
+| `packages.<system>.cli`     | `honcho` CLI                                                 |
+| `packages.<system>.migrate` | Alembic migration runner (`honcho-migrate`)                  |
+| `packages.<system>.worker`  | Background deriver / queue worker                            |
+| `apps.<system>.*`           | `nix run` entry points                                       |
+| `devShells.default`         | Editable uv2nix development shell                            |
+| `overlays.default`          | `pkgs.honcho`, `pkgs.honcho-server`, etc.                    |
+| `nixosModules.default`      | PostgreSQL (pgvector), Redis, migrate, server, worker, nginx |
 
 ### Repository layout
 
-| Path             | Contents                                    |
-| ---------------- | ------------------------------------------- |
-| `flake.nix`      | Root flake — 2 inputs (nixpkgs, honcho-src) |
-| `flake.lock`     | Pinned inputs                               |
-| `nix/module.nix` | NixOS module                                |
-| `nix/tests/`     | VM integration test and build validation    |
+| Path                   | Contents                                             |
+| ---------------------- | ---------------------------------------------------- |
+| `flake.nix`            | Flake inputs (nixpkgs, honcho-src, uv2nix ecosystem) |
+| `nix/build.nix`        | Flake outputs                                        |
+| `nix/honcho-scope.nix` | uv2nix workspace + Python package set                |
+| `nix/overrides.nix`    | Package-specific build overrides                     |
+| `nix/packages.nix`     | `mkApplication` + component wrappers                 |
+| `nix/module.nix`       | NixOS module                                         |
+| `nix/tests/`           | Build, smoke, and VM integration tests               |
 
-## NixOS Module Usage
+## Quick start
+
+```bash
+# Build the server
+nix build '.#packages.x86_64-linux.server'
+
+# Run the CLI
+nix run '.#cli' -- --help
+
+# Development shell (editable Honcho source via uv2nix)
+nix develop
+```
+
+## NixOS module
 
 ```nix
 {
@@ -32,7 +52,7 @@ NixOS service — memory infrastructure for stateful agents.
     honcho-nix.url = "github:your-user/honcho-nix";
   };
 
-  outputs = { self, nixpkgs, honcho-nix, ... }: {
+  outputs = { nixpkgs, honcho-nix, ... }: {
     nixosConfigurations.my-server = nixpkgs.lib.nixosSystem {
       modules = [
         honcho-nix.nixosModules.default
@@ -43,11 +63,14 @@ NixOS service — memory infrastructure for stateful agents.
               log_level = "INFO";
               embedding.model_config = {
                 transport = "openai";
-                model    = "text-embedding-3-small";
+                model = "text-embedding-3-small";
               };
             };
             environmentFile = "/run/secrets/honcho-env";
-            # nginx = { enable = true; host = "honcho.example.com"; };
+            database.enable = true;   # auto PostgreSQL + pgvector
+            redis.enable = false;     # opt-in local Redis + CACHE_ENABLED
+            migrate.enable = true;    # honcho-migrate.service (Alembic)
+            worker.enable = true;
           };
         }
       ];
@@ -56,30 +79,45 @@ NixOS service — memory infrastructure for stateful agents.
 }
 ```
 
+### Service units
+
+| Unit                     | Type    | Role                                     |
+| ------------------------ | ------- | ---------------------------------------- |
+| `honcho-migrate.service` | oneshot | Alembic `upgrade head` before app starts |
+| `honcho.service`         | simple  | FastAPI server on port 8000              |
+| `honcho-worker.service`  | simple  | Optional deriver queue worker            |
+
+When `migrate.enable = true` (default), both `honcho.service` and
+`honcho-worker.service` require `honcho-migrate.service`. The migrate unit
+re-runs when the migrate package or settings change (`restartTriggers`).
+
+Legacy option names `createDatabase` and `enableRedis` are renamed to
+`database.enable` and `redis.enable`.
+
 ## How it works
 
-**Just `pkgs.python3.withPackages`.** The flake avoids uv2nix, pyproject-nix,
-and flake-parts entirely — it builds a single Python environment from nixpkgs
-deps and serves Honcho's own source tree on `$PYTHONPATH` at runtime. This
-keeps the dependency surface minimal: **2 flake inputs** (nixpkgs + honcho-src).
+Dependencies are resolved from upstream `honcho-src/uv.lock` via
+[uv2nix](https://pyproject-nix.github.io/uv2nix/). The build uses layered
+overlays:
 
-Component scripts (`server`, `cli`, `migrate`, `worker`) are lightweight
-`writeShellScript` wrappers that set the right `$PYTHONPATH` and call the
-entry point.
+1. `pyproject-build-systems.overlays.wheel`
+2. `workspace.mkPyprojectOverlay`
+3. Project overrides in `nix/overrides.nix` (hatchling + app data for root `honcho`)
 
-The NixOS module uses `services.postgresql.initialScript` to create the pgvector
-extension on first database init — no ad-hoc `postStart` hacks. Redis is managed
-via `services.redis.servers.<name>`.
+Component packages are thin `writeShellApplication` wrappers around a single
+`mkApplication` derivation — no `$PYTHONPATH` hacks.
 
-## Settings Reference
+PostgreSQL gets pgvector via `services.postgresql.extensions` and
+`initialScript` on `template1`. Redis is managed via
+`services.redis.servers.honcho` when `redis.enable = true`.
 
-Settings are nested Nix attrs that get flattened to environment variables
-with `__` as the nesting separator, matching Honcho's config convention:
+## Settings reference
+
+Nested Nix attrs flatten to environment variables with `__` separators:
 
 ```nix
 services.honcho.settings = {
   log_level = "DEBUG";
-  db.connection_uri = "postgresql+psycopg://...";
   embedding.model_config = {
     transport = "openai";
     model = "text-embedding-3-small";
@@ -87,29 +125,22 @@ services.honcho.settings = {
 };
 ```
 
-becomes:
-
-```
-LOG_LEVEL=DEBUG
-DB_CONNECTION_URI=postgresql+psycopg://...
-EMBEDDING_MODEL_CONFIG__TRANSPORT=openai
-EMBEDDING_MODEL_CONFIG__MODEL=text-embedding-3-small
-```
-
 ## Secrets
 
-Use `environmentFile` instead of `settings` for anything sensitive:
+Use `environmentFile` for API keys, JWT secrets, and remote `DB_CONNECTION_URI`:
 
 ```nix
 environmentFile = "/run/secrets/honcho-env";
 ```
 
-This file is injected via systemd's `EnvironmentFile` and never enters the
-Nix store. Compatible with [sops-nix](https://github.com/Mic92/sops-nix)
-and [agenix](https://github.com/ryantm/agenix).
+Compatible with [sops-nix](https://github.com/Mic92/sops-nix) and
+[agenix](https://github.com/ryantm/agenix).
 
 ## Development
 
-```
-nix build '.#packages.x86_64-linux.pythonEnv'
+```bash
+nix develop
+nix build '.#checks.x86_64-linux.override-scope'
+nix build '.#checks.x86_64-linux.smoke-test'
+nix build '.#checks.x86_64-linux.vmtest'
 ```

@@ -2,96 +2,129 @@
   self,
   nixpkgs,
   honcho-src,
+  pyproject-nix,
+  uv2nix,
+  pyproject-build-systems,
 }: let
+  inherit (nixpkgs) lib;
+
   eachSystem = f:
-    builtins.listToAttrs (
-      map
-      (s: {
-        name = s;
-        value = f s;
-      })
-      [
-        "x86_64-linux"
-        "aarch64-linux"
-      ]
-    );
+    lib.genAttrs [
+      "x86_64-linux"
+      "aarch64-linux"
+    ] f;
 
-  mkHonchoScope = {pkgs}: let
-    pythonEnv = pkgs.python3.withPackages (
-      ps:
-        with ps; [
-          fastapi
-          uvicorn
-          httpx
-          pydantic
-          pydantic-settings
-          sqlalchemy
-          alembic
-          psycopg2
-          asyncpg
-          pgvector
-          cashews
-          redis
-          scikit-learn
-          tiktoken
-          pdfplumber
-          openpyxl
-          sqlalchemy-utils
-        ]
-    );
+  mkScope = system: let
+    pkgs = import nixpkgs {
+      inherit system;
+      config.allowUnfree = true;
+    };
+  in
+    import ./honcho-scope.nix {
+      inherit
+        pkgs
+        lib
+        honcho-src
+        pyproject-nix
+        uv2nix
+        pyproject-build-systems
+        ;
+    };
 
-    mkScript = name: entryPoint:
-      pkgs.writeShellScript "honcho-${name}" ''
-        export PYTHONPATH="${honcho-src}/src:${honcho-src}/honcho-cli/src''${PYTHONPATH:+:$PYTHONPATH}"
-        cd ${honcho-src}
-        exec ${pythonEnv}/bin/${entryPoint}
-      '';
-  in {
-    inherit pythonEnv honcho-src;
-    server = mkScript "server" "fastapi run --host 0.0.0.0 src/main.py";
-    cli = mkScript "cli" "honcho";
-    migrate = mkScript "migrate" "python scripts/migrate_db.py";
-    worker = mkScript "worker" "python -c \"import asyncio; from src.deriver.queue_manager import main; asyncio.run(main())\"";
+  mkApp = scope: name: {
+    type = "app";
+    program = "${scope.packages.${name}}/bin/honcho-${name}";
+  };
+
+  mkCliApp = scope: {
+    type = "app";
+    program = "${scope.packages.cli}/bin/honcho";
   };
 in {
   packages = eachSystem (
     system: let
-      pkgs = import nixpkgs {inherit system;};
-      scope = mkHonchoScope {inherit pkgs;};
+      scope = mkScope system;
+    in
+      scope.packages
+  );
+
+  apps = eachSystem (
+    system: let
+      scope = mkScope system;
     in {
-      inherit
-        (scope)
-        pythonEnv
-        server
-        cli
-        migrate
-        worker
-        ;
+      default = mkApp scope "server";
+      server = mkApp scope "server";
+      migrate = mkApp scope "migrate";
+      worker = mkApp scope "worker";
+      cli = mkCliApp scope;
     }
   );
 
+  devShells = eachSystem (
+    system: let
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
+      scope = mkScope system;
+    in {
+      default = pkgs.mkShell {
+        packages = [
+          scope.devVirtualenv
+          pkgs.uv
+        ];
+        env = {
+          UV_NO_SYNC = "1";
+          UV_PYTHON = scope.editablePythonSet.python.interpreter;
+          UV_PYTHON_DOWNLOADS = "never";
+        };
+        shellHook = ''
+          unset PYTHONPATH
+          export REPO_ROOT="${scope.honcho-src}"
+        '';
+      };
+    }
+  );
+
+  overlays.default = eachSystem (system: (mkScope system).overlayForPkgs);
+
   checks = eachSystem (
     system: let
-      pkgs = import nixpkgs {inherit system;};
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
+      scope = mkScope system;
     in {
-      override-scope = import ./tests/override-scope.nix {inherit pkgs self;};
-      vmtest = import ./tests/minimal-vmtest.nix {inherit pkgs self;};
+      override-scope = import ./tests/override-scope.nix {
+        inherit pkgs scope;
+      };
+      smoke-test = import ./tests/smoke-test.nix {
+        inherit pkgs scope;
+      };
+      vmtest = import ./tests/minimal-vmtest.nix {
+        inherit pkgs self;
+      };
     }
   );
 
   nixosModules.default = {
     pkgs,
-    config,
-    lib,
     ...
   }: let
-    scope = mkHonchoScope {inherit pkgs;};
+    scope = mkScope pkgs.system;
   in {
-    imports = [./module.nix];
+    imports = [
+      ./module.nix
+      (lib.mkRenamedOptionModule
+        ["services" "honcho" "createDatabase"]
+        ["services" "honcho" "database" "enable"])
+      (lib.mkRenamedOptionModule
+        ["services" "honcho" "enableRedis"]
+        ["services" "honcho" "redis" "enable"])
+    ];
     services.honcho.honchoComponents = {
-      inherit
-        (scope)
-        pythonEnv
+      inherit (scope.packages)
         server
         cli
         migrate

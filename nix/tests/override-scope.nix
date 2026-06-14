@@ -1,32 +1,16 @@
-# tests/override-scope.nix
-#
-# Verify that the honcho flake builds cleanly for the given pkgs.
+# tests/override-scope.nix — verify the uv2nix package set builds cleanly.
 {
   pkgs,
-  self,
+  scope,
 }:
-pkgs.runCommand "honcho-validate"
-{
-  buildInputs = [
-    (pkgs.python3.withPackages (
-      ps:
-        with ps; [
-          fastapi
-          uvicorn
-          httpx
-          pydantic
-          pydantic-settings
-          sqlalchemy
-          alembic
-          psycopg2
-          asyncpg
-          pgvector
-          cashews
-          redis
-        ]
-    ))
+pkgs.runCommand "honcho-validate" {
+  nativeBuildInputs = [
+    scope.packages.default
+    scope.packages.server
+    scope.packages.migrate
+    scope.packages.worker
+    scope.packages.cli
   ];
-}
-''
-  echo "honcho-nix: python env builds ok" > $out
+} ''
+  echo "honcho-nix: uv2nix packages build ok" > "$out"
 ''
