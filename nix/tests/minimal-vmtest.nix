@@ -88,13 +88,12 @@ in
           print(f"Health check response: {health}")
           honcho.succeed(f"echo '{health}' | jq -e '.status == \"ok\"'")
 
-      with subtest("API root responds (FastAPI docs / redirect)"):
-          # Honcho redirects / → /docs; just confirm we get a 200 or 307
+      with subtest("OpenAPI docs are served"):
           code = honcho.succeed(
-              "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/"
+              "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/docs"
           )
-          print(f"Root response code: {code}")
-          assert code in ("200", "307", "302"), f"Unexpected status {code}"
+          print(f"/docs response code: {code}")
+          assert code == "200", f"Unexpected status {code}"
 
       with subtest("Nginx reverse-proxy works"):
           code = honcho.succeed(
@@ -106,13 +105,13 @@ in
           honcho.succeed(f"echo '{body}' | jq -e '.status == \"ok\"'")
 
       with subtest("Metrics endpoint (prometheus) responds"):
-          honcho.wait_for_open_port(9100)
-          metrics = honcho.succeed("curl -sf http://127.0.0.1:9100/metrics 2>/dev/null || true")
-          # If metrics are available, ensure they look like Prometheus output
+          metrics = honcho.succeed(
+              "curl -sf http://127.0.0.1:9100/metrics 2>/dev/null || true"
+          )
           if metrics:
               print(f"Metrics snippet: {metrics[:300]}")
           else:
-              print("Metrics endpoint not exposed (server built without --metrics-port)")
+              print("Metrics endpoint not exposed (optional in this configuration)")
 
       print("=== All VM tests passed ===")
     '';

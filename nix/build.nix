@@ -115,6 +115,7 @@ in {
         cli
         migrate
         worker
+        tiktokenCache
         ;
     };
   };

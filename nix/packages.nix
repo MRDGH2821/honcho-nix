@@ -24,12 +24,30 @@
   honchoMeta = {
     description = "Honcho memory server for stateful agents";
     homepage = "https://github.com/plastic-labs/honcho";
-    license = lib.licenses.asl20;
+    license = lib.licenses.agpl3Plus;
   };
+
+  # Honcho imports tiktoken encodings at startup; prefetch them for offline use.
+  # Cache keys are sha1(url) as used by tiktoken.load.read_file_cached.
+  o200kBaseTiktoken = pkgs.fetchurl {
+    url = "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken";
+    sha256 = "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d";
+  };
+
+  cl100kBaseTiktoken = pkgs.fetchurl {
+    url = "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken";
+    sha256 = "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7";
+  };
+
+  tiktokenCache = pkgs.runCommand "honcho-tiktoken-cache" {} ''
+    mkdir -p $out
+    cp ${o200kBaseTiktoken} $out/fb374d419588a4632f3f557e76b4b70aebbca790
+    cp ${cl100kBaseTiktoken} $out/9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+  '';
 
   runtimeEnv = [honchoEnv honchoPkg];
 in {
-  inherit honchoApp honchoEnv honchoPkg appRoot;
+  inherit honchoApp honchoEnv honchoPkg appRoot tiktokenCache;
 
   default =
     pkgs.symlinkJoin {

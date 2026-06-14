@@ -204,6 +204,7 @@ in {
       runtimeEnvLines =
         [
           "HONCHO_CONFIG_TOML_DISABLED=1"
+          "TIKTOKEN_CACHE_DIR=${honchoC.tiktokenCache}"
         ]
         ++ lib.optionals cfg.database.enable ["DB_CONNECTION_URI=${dbUri}"]
         ++ lib.optionals cfg.redis.enable [
@@ -228,8 +229,11 @@ in {
 
       migrateRequires = lib.optional cfg.migrate.enable "honcho-migrate.service";
 
+      serviceUser = cfg.database.user;
+
       serviceDefaults = {
-        DynamicUser = true;
+        User = serviceUser;
+        Group = serviceUser;
         EnvironmentFile = environmentFiles;
         StateDirectory = "honcho";
       };
@@ -264,6 +268,13 @@ in {
           \c template1
           CREATE EXTENSION IF NOT EXISTS vector;
         '';
+      };
+
+      users.groups.${serviceUser} = {};
+      users.users.${serviceUser} = {
+        isSystemUser = true;
+        group = serviceUser;
+        description = "Honcho memory server";
       };
 
       services.redis.servers.honcho = mkIf cfg.redis.enable {
