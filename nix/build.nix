@@ -68,21 +68,7 @@ in {
       };
       scope = mkScope system;
     in {
-      default = pkgs.mkShell {
-        packages = [
-          scope.devVirtualenv
-          pkgs.uv
-        ];
-        env = {
-          UV_NO_SYNC = "1";
-          UV_PYTHON = scope.editablePythonSet.python.interpreter;
-          UV_PYTHON_DOWNLOADS = "never";
-        };
-        shellHook = ''
-          unset PYTHONPATH
-          export REPO_ROOT="${scope.honcho-src}"
-        '';
-      };
+      default = import ./devshell.nix {inherit pkgs scope;};
     }
   );
 

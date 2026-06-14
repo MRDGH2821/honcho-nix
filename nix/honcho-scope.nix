@@ -10,15 +10,22 @@
     inherit
       pkgs
       lib
-      honcho-src
       pyproject-nix
       uv2nix
       pyproject-build-systems
       ;
   };
 
+  # Flake inputs with `flake = false` are store-path sets, not plain paths.
+  honchoSrc =
+    if lib.isStorePath honcho-src
+    then honcho-src
+    else if honcho-src ? outPath
+    then honcho-src.outPath
+    else honcho-src;
+
   workspace = uv2nix.lib.workspace.loadWorkspace {
-    workspaceRoot = honcho-src;
+    workspaceRoot = honchoSrc;
   };
 
   python = pkgs.python312;
@@ -33,6 +40,7 @@
         })
         (callPackage ./overrides.nix {
           inherit python;
+          honcho-src = honchoSrc;
         })
       ]
     );
@@ -40,14 +48,6 @@
   packages = callPackage ./packages.nix {
     inherit workspace pythonSet python;
   };
-
-  editableOverlay = workspace.mkEditablePyprojectOverlay {
-    root = "$REPO_ROOT";
-  };
-
-  editablePythonSet = pythonSet.overrideScope editableOverlay;
-
-  devVirtualenv = editablePythonSet.mkVirtualEnv "honcho-dev-env" workspace.deps.all;
 
   overlayForPkgs = final: prev: {
     inherit (packages)
@@ -69,9 +69,7 @@ in {
     pythonSet
     python
     packages
-    devVirtualenv
-    editablePythonSet
     overlayForPkgs
-    honcho-src
+    honchoSrc
     ;
 }

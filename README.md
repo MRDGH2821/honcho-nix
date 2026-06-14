@@ -27,6 +27,7 @@ stateful agents.
 | `nix/honcho-scope.nix` | uv2nix workspace + Python package set                |
 | `nix/overrides.nix`    | Package-specific build overrides                     |
 | `nix/packages.nix`     | `mkApplication` + component wrappers                 |
+| `nix/devshell.nix`     | Locked uv2nix development shell (non-editable)       |
 | `nix/module.nix`       | NixOS module                                         |
 | `nix/tests/`           | Build, smoke, and VM integration tests               |
 
