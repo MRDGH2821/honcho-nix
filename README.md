@@ -14,7 +14,7 @@ stateful agents.
 | `packages.<system>.migrate` | Alembic migration runner (`honcho-migrate`)                  |
 | `packages.<system>.worker`  | Background deriver / queue worker                            |
 | `apps.<system>.*`           | `nix run` entry points                                       |
-| `devShells.default`         | Editable uv2nix development shell                            |
+| `devShells.default`         | Locked uv2nix development shell                              |
 | `overlays.default`          | `pkgs.honcho`, `pkgs.honcho-server`, etc.                    |
 | `nixosModules.default`      | PostgreSQL (pgvector), Redis, migrate, server, worker, nginx |
 
@@ -40,7 +40,7 @@ nix build '.#packages.x86_64-linux.server'
 # Run the CLI
 nix run '.#cli' -- --help
 
-# Development shell (editable Honcho source via uv2nix)
+# Development shell (locked Honcho env from uv.lock)
 nix develop
 ```
 
@@ -145,3 +145,11 @@ nix build '.#checks.x86_64-linux.override-scope'
 nix build '.#checks.x86_64-linux.smoke-test'
 nix build '.#checks.x86_64-linux.vmtest'
 ```
+
+## License
+
+This repository uses the same license as upstream
+[Honcho](https://github.com/plastic-labs/honcho): the
+[GNU Affero General Public License v3.0 (AGPL-3.0)](https://www.gnu.org/licenses/agpl-3.0.html).
+
+The full license text is in [LICENSE.txt](LICENSE.txt).
